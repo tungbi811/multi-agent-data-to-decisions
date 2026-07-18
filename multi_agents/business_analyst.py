@@ -12,17 +12,56 @@ from autogen.agentchat.group import (
 from pydantic import BaseModel, Field
 
 
+DATA_PREVIEW_ROWS = 5
+MAX_PREVIEW_COLUMNS = 10
+MAX_DISPLAY_TEXT_CHARS = 80
+MAX_COLUMN_LIST_ITEMS = 10
+METADATA_CHUNK_ROWS = 1_000
+MAX_DATA_INFO_CHARS = 8_000
+TRUNCATION_MARKER = "…"
+
+
+def _bounded_text(value: object) -> str:
+    text = str(value).replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
+    if len(text) <= MAX_DISPLAY_TEXT_CHARS:
+        return text
+    return text[: MAX_DISPLAY_TEXT_CHARS - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
+
+
+def _format_column_names(columns: list[object]) -> str:
+    displayed = [_bounded_text(column) for column in columns[:MAX_COLUMN_LIST_ITEMS]]
+    if len(columns) > MAX_COLUMN_LIST_ITEMS:
+        displayed.append(f"{len(columns) - MAX_COLUMN_LIST_ITEMS} more")
+    return str(displayed)
+
+
 class DatasetRegistry:
     def __init__(self, workspace_root: Path, allowed_relative_paths: tuple[str, ...]) -> None:
         self.workspace_root = workspace_root.resolve()
         self.allowed = {
-            (self.workspace_root / relative).resolve() for relative in allowed_relative_paths
+            self._resolve_within_workspace(
+                relative,
+                error=f"Allowlist entry {relative!r} is not a safe relative path within the workspace",
+            )
+            for relative in allowed_relative_paths
         }
 
     def resolve(self, data_path: str) -> Path:
-        candidate = (self.workspace_root / data_path).resolve()
+        candidate = self._resolve_within_workspace(
+            data_path,
+            error=f"{data_path!r} is not an uploaded dataset",
+        )
         if candidate not in self.allowed:
             raise ValueError(f"{data_path!r} is not an uploaded dataset")
+        return candidate
+
+    def _resolve_within_workspace(self, relative_path: str, *, error: str) -> Path:
+        relative = Path(relative_path)
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            raise ValueError(error)
+        candidate = (self.workspace_root / relative).resolve()
+        if not candidate.is_relative_to(self.workspace_root):
+            raise ValueError(error)
         return candidate
 
     def get_data_info(
@@ -30,16 +69,53 @@ class DatasetRegistry:
         data_path: Annotated[str, "Uploaded dataset path relative to /workspace"],
     ) -> ReplyResult:
         path = self.resolve(data_path)
-        frame = pd.read_csv(path)
-        dataset_name = path.stem.replace("_", " ").title()
+        with path.open("rb") as dataset_stream:
+            header = pd.read_csv(dataset_stream, nrows=0)
+            total_columns = len(header.columns)
+            inspected_columns = min(total_columns, MAX_PREVIEW_COLUMNS)
+
+            dataset_stream.seek(0)
+            preview = pd.read_csv(
+                dataset_stream,
+                nrows=DATA_PREVIEW_ROWS,
+                usecols=range(inspected_columns),
+            )
+
+            dataset_stream.seek(0)
+            row_count = sum(
+                len(chunk)
+                for chunk in pd.read_csv(
+                    dataset_stream,
+                    usecols=[0],
+                    chunksize=METADATA_CHUNK_ROWS,
+                )
+            )
+
+        numerical_columns = preview.select_dtypes(include=["number"]).columns.tolist()
+        categorical_columns = preview.select_dtypes(include=["object", "category"]).columns.tolist()
+        display_preview = preview.copy()
+        display_preview.columns = [_bounded_text(column) for column in display_preview.columns]
+        display_preview = display_preview.map(_bounded_text)
+        omitted_columns = total_columns - inspected_columns
+        omission_note = (
+            f"; {omitted_columns} additional columns omitted from preview and type sampling"
+            if omitted_columns
+            else ""
+        )
+        dataset_name = _bounded_text(path.stem.replace("_", " ").title())
         message = (
             f"### {dataset_name}\n\n"
-            f"First five rows:\n\n```text\n{frame.head(5).to_string(index=False)}\n```\n\n"
-            f"Numerical columns: {frame.select_dtypes(include=['number']).columns.tolist()}\n\n"
-            f"Categorical columns: "
-            f"{frame.select_dtypes(include=['object', 'category']).columns.tolist()}\n\n"
-            f"Shape: {frame.shape[0]} rows × {frame.shape[1]} columns"
+            f"Shape: {row_count} rows × {total_columns} columns\n\n"
+            f"First five rows (first {inspected_columns} columns{omission_note}):\n\n"
+            f"```text\n{display_preview.to_string(index=False)}\n```\n\n"
+            "Numerical columns (sample-inferred from the first five rows): "
+            f"{_format_column_names(numerical_columns)}\n\n"
+            "Categorical columns (sample-inferred from the first five rows): "
+            f"{_format_column_names(categorical_columns)}"
         )
+        if len(message) > MAX_DATA_INFO_CHARS:
+            suffix = "\n\n[Inspection output truncated]"
+            message = message[: MAX_DATA_INFO_CHARS - len(suffix)] + suffix
         return ReplyResult(message=message, target=AgentNameTarget("BusinessAnalyst"))
 
 
