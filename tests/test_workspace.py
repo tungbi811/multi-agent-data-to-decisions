@@ -84,6 +84,35 @@ def test_record_output_rejects_overlong_step_name(tmp_path):
     assert not any(workspace.output_dir.iterdir())
 
 
+def test_container_mount_cannot_modify_authoritative_recorded_code(tmp_path):
+    workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
+    code_path = workspace.record_code("print('authoritative')")
+
+    mounted_code_dir = workspace.root / "code"
+    assert not mounted_code_dir.exists()
+    mounted_code_dir.mkdir()
+    (mounted_code_dir / code_path.name).write_text("print('tampered')\n")
+
+    assert code_path.read_text() == "print('authoritative')\n"
+    assert not code_path.is_relative_to(workspace.root)
+    assert {path.name for path in workspace.root.iterdir()} == {"code", "datasets"}
+
+
+def test_container_output_symlink_cannot_redirect_authoritative_evidence(tmp_path):
+    workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
+    outside = tmp_path / "redirected.txt"
+    mounted_output_dir = workspace.root / "outputs"
+    assert not mounted_output_dir.exists()
+    mounted_output_dir.mkdir()
+    (mounted_output_dir / "step-001.txt").symlink_to(outside)
+
+    output_path = workspace.record_output("step-001", "authoritative output")
+
+    assert output_path.read_text() == "authoritative output"
+    assert not output_path.is_relative_to(workspace.root)
+    assert not outside.exists()
+
+
 def test_finalize_retains_evidence_but_removes_uploaded_data(tmp_path):
     workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
     workspace.save_upload("churn.csv", CSV)
@@ -92,10 +121,12 @@ def test_finalize_retains_evidence_but_removes_uploaded_data(tmp_path):
     workspace.record_output(code_path.stem, "ok\n")
     workspace.append_trace({"type": "text", "sender": "Coder"})
     workspace.record_recommendation("Prioritize customers with short tenure.")
+    authoritative_root = workspace.code_dir.parent
 
     retained = workspace.finalize("completed", 1.25, ["one recovered failure"])
 
     assert not workspace.root.exists()
+    assert not authoritative_root.exists()
     assert (retained / "code" / "step-001.py").read_text() == "print('ok')\n"
     assert (retained / "outputs" / "step-001.txt").read_text() == "ok\n"
     assert (retained / "evidence" / "prompt.txt").read_text() == ("Identify the drivers of churn.")
@@ -277,8 +308,10 @@ def test_artifact_count_limits_are_checked_before_writing(tmp_path):
 def test_close_is_idempotent(tmp_path):
     workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
     root = workspace.root
+    authoritative_root = workspace.code_dir.parent
 
     workspace.close()
     workspace.close()
 
     assert not root.exists()
+    assert not authoritative_root.exists()

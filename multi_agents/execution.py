@@ -16,6 +16,10 @@ from .workspace import RunWorkspace
 
 EXECUTOR_IMAGE = "auto-ds-executor:0.1"
 MAX_OUTPUT_CHARS = 12_000
+PYTHON_ONLY_EXECUTION_POLICY = {
+    language: language == "python"
+    for language in DockerCommandLineCodeExecutor.DEFAULT_EXECUTION_POLICY
+}
 
 
 class Executor(Protocol):
@@ -31,7 +35,7 @@ def create_docker_executor(workspace: RunWorkspace) -> DockerCommandLineCodeExec
         image=EXECUTOR_IMAGE,
         timeout=300,
         work_dir=workspace.root,
-        execution_policies={"python": True, "bash": False, "shell": False, "sh": False},
+        execution_policies=PYTHON_ONLY_EXECUTION_POLICY,
         container_create_kwargs={
             "network_disabled": True,
             "mem_limit": "2g",
@@ -60,19 +64,34 @@ class CodeRunner:
     ) -> ReplyResult:
         code_path = self.workspace.record_code(code)
         block = CodeBlock(language="python", code=code)
+        retry_evidence: list[str] = []
         try:
             result = self.executor.execute_code_blocks([block])
-        except Exception:
-            self.executor.restart()
+        except Exception as first_exc:
+            retry_evidence.append(f"Execution attempt 1 failed:\n{first_exc}")
+            try:
+                self.executor.restart()
+            except Exception as restart_exc:
+                retry_evidence.append(f"Executor restart failed:\n{restart_exc}")
+                self.workspace.record_output(code_path.stem, "\n\n".join(retry_evidence))
+                message = f"Execution failed during restart: {restart_exc}"
+                return ReplyResult(message=message[-MAX_OUTPUT_CHARS:], target=RevertToUserTarget())
+            retry_evidence.append("Executor restart succeeded.")
             try:
                 result = self.executor.execute_code_blocks([block])
-            except Exception as exc:
-                message = f"Execution failed after retry: {exc}"
-                self.workspace.record_output(code_path.stem, message)
-                return ReplyResult(message=message, target=RevertToUserTarget())
+            except Exception as second_exc:
+                retry_evidence.append(f"Execution attempt 2 failed:\n{second_exc}")
+                self.workspace.record_output(code_path.stem, "\n\n".join(retry_evidence))
+                message = f"Execution failed after retry: {second_exc}"
+                return ReplyResult(message=message[-MAX_OUTPUT_CHARS:], target=RevertToUserTarget())
 
         output = str(result.output)
-        self.workspace.record_output(code_path.stem, output)
+        if retry_evidence:
+            retry_evidence.append(f"Execution attempt 2 output:\n{output}")
+            evidence = "\n\n".join(retry_evidence)
+        else:
+            evidence = output
+        self.workspace.record_output(code_path.stem, evidence)
         bounded = output[-MAX_OUTPUT_CHARS:]
         if result.exit_code == 0:
             target_name = context_variables["current_agent"] or "DataScientist"

@@ -62,10 +62,14 @@ class RunWorkspace:
         self.artifacts_root = artifacts_root
         self.run_id = run_id
         self.limits = limits
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._private_root = Path(
+            tempfile.mkdtemp(prefix=f".{root.name}-private-", dir=root.parent)
+        )
         self.dataset_dir = root / "datasets"
-        self.code_dir = root / "code"
-        self.output_dir = root / "outputs"
-        self.evidence_dir = root / "evidence"
+        self.code_dir = self._private_root / "code"
+        self.output_dir = self._private_root / "outputs"
+        self.evidence_dir = self._private_root / "evidence"
         for directory in (self.dataset_dir, self.code_dir, self.output_dir, self.evidence_dir):
             directory.mkdir(parents=True, exist_ok=True)
         self._datasets: list[dict[str, Any]] = []
@@ -216,15 +220,17 @@ class RunWorkspace:
             raise FileExistsError(f"Retained run {self.run_id!r} already exists.")
         staging = Path(tempfile.mkdtemp(prefix=f".{self.run_id}-", dir=self.artifacts_root))
         try:
-            for name in ("code", "outputs", "evidence"):
-                shutil.copytree(self.root / name, staging / name)
+            for source in (self.code_dir, self.output_dir, self.evidence_dir):
+                shutil.copytree(source, staging / source.name)
             staging.rename(retained)
         finally:
             if staging.exists():
                 shutil.rmtree(staging)
         shutil.rmtree(self.root)
+        shutil.rmtree(self._private_root)
         return retained
 
     def close(self) -> None:
-        if self.root.exists():
-            shutil.rmtree(self.root)
+        for directory in (self.root, self._private_root):
+            if directory.exists():
+                shutil.rmtree(directory)
