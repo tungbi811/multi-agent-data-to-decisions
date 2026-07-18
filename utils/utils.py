@@ -2,6 +2,8 @@ from html import escape
 
 import streamlit as st
 
+from utils.events import safe_content, safe_role
+
 ROLE_EMOJI = {
     "User": "🧑‍💻",
     "BusinessAnalyst": "💼",
@@ -23,13 +25,14 @@ def safe_md(text: str) -> str:
 def display_group_chat():
     expander_buffer = []  # temporary buffer for consecutive expander messages
 
-    for msg in st.session_state.messages:
-        role = msg["role"]
-        content = msg["content"]
-        in_expander = msg.get("in_expander", False)
+    for raw_message in st.session_state.messages:
+        msg = raw_message if isinstance(raw_message, dict) else {}
+        role = safe_role(msg.get("role"))
+        content = safe_content(msg.get("content"))
+        in_expander = msg.get("in_expander") is True
 
         if in_expander:
-            expander_buffer.append(msg)
+            expander_buffer.append({"role": role, "content": content})
         else:
             # If we hit a normal message and there are buffered expander messages, render them first
             if expander_buffer:

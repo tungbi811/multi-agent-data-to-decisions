@@ -1,6 +1,12 @@
 from types import SimpleNamespace
 
-from utils.events import coder_code_from_tool_call, next_or_none, safe_event_type
+from utils.events import (
+    coder_code_from_tool_call,
+    next_or_none,
+    safe_content,
+    safe_event_type,
+    safe_role,
+)
 
 
 def test_next_or_none_returns_an_event_without_marking_exhaustion():
@@ -38,6 +44,21 @@ def test_coder_code_from_tool_call_extracts_code():
     assert coder_code_from_tool_call(event) == "print(1)"
 
 
+def test_coder_code_from_tool_call_bounds_code_before_session_storage():
+    event = SimpleNamespace(
+        content=SimpleNamespace(
+            sender="Coder",
+            tool_calls=[
+                SimpleNamespace(
+                    function=SimpleNamespace(arguments='{"code":"' + "x" * 20_000 + '"}')
+                )
+            ],
+        )
+    )
+
+    assert coder_code_from_tool_call(event) == "x" * 12_000
+
+
 def test_coder_code_from_tool_call_ignores_non_coder_events():
     event = SimpleNamespace(content=SimpleNamespace(sender="DataScientist"))
 
@@ -56,3 +77,14 @@ def test_safe_event_type_handles_missing_values():
 
 def test_safe_event_type_maps_unhashable_values_to_unknown():
     assert safe_event_type(SimpleNamespace(type=[])) == "unknown"
+
+
+def test_safe_role_maps_malformed_values_to_system():
+    assert safe_role(["Coder"]) == "System"
+    assert safe_role("") == "System"
+    assert safe_role("x" * 101) == "System"
+
+
+def test_safe_content_rejects_non_text_and_bounds_text():
+    assert safe_content({"api_key": "must-not-leak"}) == "Malformed event content."
+    assert safe_content("x" * 20_000) == "x" * 12_000

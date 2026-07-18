@@ -4,7 +4,13 @@ st.set_page_config(page_title="🤖 Multi-Agent for Data Science", layout="wide"
 
 from multi_agents.runtime import AnalysisRuntime  # noqa: E402
 from multi_agents.workspace import RunWorkspace  # noqa: E402
-from utils.events import coder_code_from_tool_call, next_or_none, safe_event_type  # noqa: E402
+from utils.events import (  # noqa: E402
+    coder_code_from_tool_call,
+    next_or_none,
+    safe_content,
+    safe_event_type,
+    safe_role,
+)
 from utils.sidebar import Sidebar  # noqa: E402
 from utils.utils import display_group_chat  # noqa: E402
 
@@ -19,6 +25,17 @@ SESSION_DEFAULTS = {
     "terminated": False,
     "last_agent_name": None,
 }
+RUN_STATE_DEFAULTS = {
+    key: SESSION_DEFAULTS[key]
+    for key in (
+        "events",
+        "event",
+        "awaiting_response",
+        "user_input",
+        "terminated",
+        "last_agent_name",
+    )
+}
 
 
 def initialize_state() -> None:
@@ -27,26 +44,44 @@ def initialize_state() -> None:
             st.session_state[key] = list(value) if isinstance(value, list) else value
 
 
-def cleanup_runtime(status: str | None = None) -> None:
+def cleanup_runtime(status: str | None = None) -> bool:
     runtime = st.session_state.runtime
     if runtime is None:
-        return
-    if status is None:
-        runtime.close()
-    else:
-        runtime.finish(status)
+        return True
+    try:
+        if status is None:
+            runtime.close()
+        else:
+            runtime.finish(status)
+    except Exception:
+        return False
     st.session_state.runtime = None
+    return True
 
 
-def reset_state() -> None:
-    cleanup_runtime()
+def reset_run_state() -> None:
+    for key, value in RUN_STATE_DEFAULTS.items():
+        st.session_state[key] = value
+
+
+def reset_state() -> bool:
+    if not cleanup_runtime():
+        return False
     for key in SESSION_DEFAULTS:
         st.session_state.pop(key, None)
+    return True
 
 
-def stop_with_message(message: str) -> None:
-    cleanup_runtime("failed")
+def stop_with_message(message: str, diagnostic: str) -> None:
+    runtime = st.session_state.runtime
+    if runtime is not None:
+        runtime.record_failure(diagnostic)
+    cleaned = cleanup_runtime("failed")
     st.session_state.messages.append({"role": "System", "content": message})
+    if not cleaned:
+        st.session_state.messages.append(
+            {"role": "System", "content": "Runtime cleanup is incomplete; retry Restart."}
+        )
     st.session_state.terminated = True
 
 
@@ -60,12 +95,13 @@ def process_event(event, requirement: str) -> None:
 
     content = getattr(event, "content", None)
     if event_type == "text":
-        sender = getattr(content, "sender", "System")
-        message = getattr(content, "content", "")
+        sender = safe_role(getattr(content, "sender", "System"))
+        message = safe_content(getattr(content, "content", None))
         if not (sender == "User" and isinstance(message, str) and requirement.strip() in message):
-            st.session_state.messages.append({"role": sender, "content": str(message)})
+            st.session_state.messages.append({"role": sender, "content": message})
     elif event_type == "tool_call":
-        sender = getattr(content, "sender", None)
+        raw_sender = getattr(content, "sender", None)
+        sender = safe_role(raw_sender)
         if sender == "Coder":
             code = coder_code_from_tool_call(event)
             if code is None:
@@ -76,19 +112,19 @@ def process_event(event, requirement: str) -> None:
                 st.session_state.messages.append(
                     {"role": "Coder", "content": code, "in_expander": True}
                 )
-        elif sender:
+        elif isinstance(raw_sender, str) and sender != "System":
             st.session_state.last_agent_name = sender
         else:
             st.session_state.messages.append(
                 {"role": "System", "content": "Malformed tool call received."}
             )
     elif event_type == "tool_response":
-        sender = st.session_state.last_agent_name or "System"
-        message = getattr(content, "content", "Malformed tool response received.")
+        sender = safe_role(st.session_state.last_agent_name)
+        message = safe_content(getattr(content, "content", None))
         st.session_state.messages.append(
             {
                 "role": sender,
-                "content": str(message),
+                "content": message,
                 "in_expander": sender != "BusinessAnalyst",
             }
         )
@@ -96,8 +132,11 @@ def process_event(event, requirement: str) -> None:
     elif event_type == "input_request":
         st.session_state.awaiting_response = True
     elif event_type == "run_completion":
-        st.session_state.messages.append({"role": "System", "content": str(content)})
-        cleanup_runtime("completed")
+        st.session_state.messages.append({"role": "System", "content": safe_content(content)})
+        if not cleanup_runtime("completed"):
+            st.session_state.messages.append(
+                {"role": "System", "content": "Runtime cleanup is incomplete; retry Restart."}
+            )
         st.session_state.terminated = True
 
 
@@ -123,26 +162,37 @@ with content_column:
             st.warning("Please describe your data analysis requirements to proceed.")
             st.stop()
 
-        cleanup_runtime()
-        workspace = RunWorkspace.create()
+        if not cleanup_runtime():
+            st.error("Unable to replace the active analysis because cleanup is incomplete.")
+            st.stop()
+        reset_run_state()
+        workspace = None
         try:
+            workspace = RunWorkspace.create()
             for uploaded in sidebar.uploaded_files:
                 workspace.save_upload(uploaded.name, bytes(uploaded.getbuffer()))
             runtime = AnalysisRuntime.start(sidebar.api_key, workspace)
             st.session_state.runtime = runtime
             st.session_state.messages.append({"role": "User", "content": sidebar.user_requirements})
             st.session_state.events = runtime.run(sidebar.user_requirements)
-        except Exception as exc:
-            if st.session_state.runtime is None:
-                workspace.close()
+        except Exception:
+            runtime = st.session_state.runtime
+            if runtime is None:
+                if workspace is not None:
+                    try:
+                        workspace.close()
+                    except Exception:
+                        pass
             else:
+                runtime.record_failure("Analysis startup failed.")
                 cleanup_runtime()
-            st.error(f"Unable to start analysis: {exc}")
+            st.error("Unable to start analysis. Check the upload and configuration, then retry.")
             st.stop()
 
     if st.sidebar.button("🔄 Restart", use_container_width=True, key="restart"):
-        reset_state()
-        st.rerun()
+        if reset_state():
+            st.rerun()
+        st.error("Unable to restart because runtime cleanup is incomplete.")
 
     display_group_chat()
     if not st.session_state.terminated and not st.session_state.awaiting_response:
@@ -151,23 +201,39 @@ with content_column:
                 try:
                     st.session_state.event.content.respond(st.session_state.user_input)
                     st.session_state.user_input = ""
-                except Exception as exc:
-                    stop_with_message(f"Unable to submit response: {exc}")
+                except Exception:
+                    stop_with_message(
+                        "Unable to submit the response safely.",
+                        "User response delivery failed.",
+                    )
             else:
                 try:
                     with st.spinner("Loading...", show_time=True):
                         event, exhausted = next_or_none(st.session_state.events)
+                except Exception:
+                    stop_with_message(
+                        "Analysis stopped because its event stream failed.",
+                        "Event iterator failed.",
+                    )
+                else:
                     if exhausted:
-                        stop_with_message("Analysis ended before a completion event was received.")
+                        stop_with_message(
+                            "Analysis ended before a completion event was received.",
+                            "Event stream ended before completion.",
+                        )
                     else:
                         st.session_state.event = event
-                        runtime = st.session_state.runtime
-                        if runtime is None:
-                            raise RuntimeError("Analysis runtime is unavailable.")
-                        runtime.record_event(event)
-                        process_event(event, sidebar.user_requirements)
-                except Exception as exc:
-                    stop_with_message(f"Analysis stopped safely: {exc}")
+                        try:
+                            runtime = st.session_state.runtime
+                            if runtime is None:
+                                raise RuntimeError("Analysis runtime is unavailable.")
+                            runtime.record_event(event)
+                            process_event(event, sidebar.user_requirements)
+                        except Exception:
+                            stop_with_message(
+                                "Analysis stopped while processing an event.",
+                                "Event processing failed.",
+                            )
             st.rerun()
     elif st.session_state.terminated:
         st.info(

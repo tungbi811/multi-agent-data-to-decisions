@@ -1,4 +1,3 @@
-import os
 import streamlit as st
 
 
@@ -27,7 +26,7 @@ class Sidebar:
         self.api_key = st.text_input(
             "OPENAI API Key",
             type="password",
-            value=os.environ.get("OPENAI_API_KEY", ""),
+            value="",
             label_visibility="collapsed",
             placeholder="Enter your API key",
         )

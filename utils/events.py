@@ -10,6 +10,8 @@ KNOWN_EVENT_TYPES = {
     "input_request",
     "run_completion",
 }
+MAX_ROLE_CHARS = 100
+MAX_CONTENT_CHARS = 12_000
 
 
 def next_or_none(events: Iterator[Any]) -> tuple[Any | None, bool]:
@@ -25,7 +27,7 @@ def coder_code_from_tool_call(event: Any) -> str | None:
             return None
         arguments = json.loads(event.content.tool_calls[0].function.arguments)
         code = arguments.get("code")
-        return code if isinstance(code, str) else None
+        return safe_content(code) if isinstance(code, str) else None
     except (AttributeError, IndexError, TypeError, json.JSONDecodeError):
         return None
 
@@ -35,3 +37,18 @@ def safe_event_type(event: Any) -> str:
     return (
         event_type if isinstance(event_type, str) and event_type in KNOWN_EVENT_TYPES else "unknown"
     )
+
+
+def safe_role(value: Any) -> str:
+    if not isinstance(value, str):
+        return "System"
+    role = value.strip()
+    if not role or len(role) > MAX_ROLE_CHARS or any(ord(character) < 32 for character in role):
+        return "System"
+    return role
+
+
+def safe_content(value: Any) -> str:
+    if not isinstance(value, str):
+        return "Malformed event content."
+    return value[:MAX_CONTENT_CHARS]

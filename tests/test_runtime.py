@@ -100,6 +100,27 @@ def test_start_preserves_original_error_when_cleanup_fails(tmp_path, monkeypatch
     assert not workspace.root.exists()
 
 
+def test_start_preserves_original_error_when_workspace_cleanup_fails(tmp_path, monkeypatch):
+    workspace = make_workspace(tmp_path)
+    runner = FakeRunner()
+    monkeypatch.setattr("multi_agents.runtime.create_docker_executor", lambda workspace: object())
+    monkeypatch.setattr("multi_agents.runtime.CodeRunner", lambda workspace, executor: runner)
+    monkeypatch.setattr(
+        "multi_agents.runtime.GroupChat",
+        lambda api_key, workspace, code_runner: (_ for _ in ()).throw(RuntimeError("bad config")),
+    )
+    monkeypatch.setattr(
+        workspace,
+        "close",
+        lambda: (_ for _ in ()).throw(OSError("cleanup secret must-not-mask")),
+    )
+
+    with pytest.raises(RuntimeError, match="bad config"):
+        AnalysisRuntime.start("local-key", workspace)
+
+    assert runner.stopped == 1
+
+
 def test_run_records_original_prompt_once_before_group_chat(tmp_path):
     workspace = make_workspace(tmp_path)
     group_chat = FakeGroupChat()
@@ -159,6 +180,55 @@ def test_record_event_reports_workspace_limits(tmp_path):
         runtime.record_event(SimpleNamespace(type="text", content="too much trace evidence"))
 
 
+def test_record_event_normalizes_malformed_trace_fields(tmp_path):
+    workspace = make_workspace(tmp_path)
+    runtime = AnalysisRuntime(workspace, FakeRunner(), FakeGroupChat())
+
+    runtime.record_event(
+        SimpleNamespace(
+            type="text",
+            content=SimpleNamespace(
+                sender=["Coder"],
+                content={"api_key": "must-not-leak"},
+            ),
+        )
+    )
+
+    trace = json.loads(workspace.evidence_dir.joinpath("trace.jsonl").read_text())
+    assert trace == {
+        "type": "text",
+        "sender": "System",
+        "content": "Malformed event content.",
+    }
+    assert "must-not-leak" not in workspace.evidence_dir.joinpath("trace.jsonl").read_text()
+
+
+def test_record_failure_is_bounded_deduplicated_and_redacts_secret_like_values(tmp_path):
+    workspace = make_workspace(tmp_path)
+    runtime = AnalysisRuntime(workspace, FakeRunner(), FakeGroupChat())
+    reason = "Iterator failed; api_key=must-not-leak; " + "x" * 2_000
+
+    runtime.record_failure(reason)
+    runtime.record_failure(reason)
+
+    assert len(runtime.failures) == 1
+    assert len(runtime.failures[0]) <= 1_000
+    assert "must-not-leak" not in runtime.failures[0]
+    assert "[REDACTED]" in runtime.failures[0]
+
+
+def test_record_failure_is_retained_in_final_run_evidence(tmp_path):
+    workspace = make_workspace(tmp_path)
+    runtime = AnalysisRuntime(workspace, FakeRunner(), FakeGroupChat())
+
+    runtime.record_failure("Event iterator failed.")
+    runtime.finish("failed")
+
+    retained = workspace.artifacts_root / workspace.run_id
+    run = json.loads(retained.joinpath("evidence", "run.json").read_text())
+    assert run["failures"] == ["Event iterator failed."]
+
+
 def test_finish_retains_evidence_when_executor_cleanup_fails(tmp_path):
     workspace = make_workspace(tmp_path)
     runner = FakeRunner(RuntimeError("stop failed"))
@@ -202,3 +272,90 @@ def test_close_stops_runner_and_removes_temporary_roots_even_when_stop_fails(tmp
     assert runtime.failures == ["Executor cleanup failed: stop failed"]
     assert not root.exists()
     assert not private_root.exists()
+
+
+def test_close_keeps_runtime_retryable_when_workspace_cleanup_fails(tmp_path, monkeypatch):
+    workspace = make_workspace(tmp_path)
+    runner = FakeRunner()
+    runtime = AnalysisRuntime(workspace, runner, SimpleNamespace())
+    original_close = workspace.close
+    attempts = 0
+
+    def fail_once():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("temporary cleanup failure")
+        original_close()
+
+    monkeypatch.setattr(workspace, "close", fail_once)
+
+    with pytest.raises(OSError, match="temporary cleanup failure"):
+        runtime.close()
+
+    assert runtime.finished is False
+    assert runner.stopped == 1
+    assert workspace.root.exists()
+
+    runtime.close()
+
+    assert runtime.finished is True
+    assert runner.stopped == 1
+    assert not workspace.root.exists()
+
+
+def test_finish_keeps_runtime_retryable_when_workspace_finalization_fails(tmp_path, monkeypatch):
+    workspace = make_workspace(tmp_path)
+    runner = FakeRunner()
+    runtime = AnalysisRuntime(workspace, runner, SimpleNamespace())
+    original_finalize = workspace.finalize
+    attempts = 0
+
+    def fail_once(status, elapsed, failures):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("temporary finalize failure")
+        return original_finalize(status, elapsed, failures)
+
+    monkeypatch.setattr(workspace, "finalize", fail_once)
+
+    with pytest.raises(OSError, match="temporary finalize failure"):
+        runtime.finish("failed")
+
+    assert runtime.finished is False
+    assert runner.stopped == 1
+    assert workspace.root.exists()
+
+    runtime.finish("failed")
+
+    retained = workspace.artifacts_root / workspace.run_id
+    assert runtime.finished is True
+    assert runner.stopped == 1
+    assert retained.joinpath("evidence", "run.json").is_file()
+
+
+def test_close_retries_pending_finalization_instead_of_discarding_evidence(tmp_path, monkeypatch):
+    workspace = make_workspace(tmp_path)
+    runner = FakeRunner()
+    runtime = AnalysisRuntime(workspace, runner, SimpleNamespace())
+    original_finalize = workspace.finalize
+    attempts = 0
+
+    def fail_once(status, elapsed, failures):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("temporary finalize failure")
+        return original_finalize(status, elapsed, failures)
+
+    monkeypatch.setattr(workspace, "finalize", fail_once)
+
+    with pytest.raises(OSError, match="temporary finalize failure"):
+        runtime.finish("completed")
+    runtime.close()
+
+    retained = workspace.artifacts_root / workspace.run_id
+    run = json.loads(retained.joinpath("evidence", "run.json").read_text())
+    assert run["status"] == "completed"
+    assert runner.stopped == 1
