@@ -75,6 +75,15 @@ def test_record_output_rejects_collisions(tmp_path):
     assert (workspace.output_dir / "step-001.txt").read_text() == "first"
 
 
+def test_record_output_rejects_overlong_step_name(tmp_path):
+    workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
+
+    with pytest.raises(ValueError, match="at most 100 ASCII characters"):
+        workspace.record_output("a" * 101, "untrusted output")
+
+    assert not any(workspace.output_dir.iterdir())
+
+
 def test_finalize_retains_evidence_but_removes_uploaded_data(tmp_path):
     workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
     workspace.save_upload("churn.csv", CSV)
@@ -115,12 +124,55 @@ def test_failed_run_can_finalize_without_recommendation(tmp_path):
     assert not (retained / "evidence" / "recommendation.txt").exists()
 
 
+def test_finalize_rejects_oversized_failure_metadata_before_writing(tmp_path):
+    artifacts_root = tmp_path / "artifacts"
+    workspace = RunWorkspace.create(
+        tmp_path / "temp",
+        artifacts_root,
+        limits=WorkspaceLimits(max_record_bytes=400, max_run_bytes=2000),
+    )
+
+    with pytest.raises(WorkspaceLimitError, match="run metadata record limit"):
+        workspace.finalize("failed", 0.5, ["x" * 1000])
+
+    assert workspace.root.exists()
+    assert not (workspace.evidence_dir / "run.json").exists()
+    assert not artifacts_root.exists()
+
+    retained = workspace.finalize("failed", 0.5, ["retryable"])
+    assert (retained / "evidence" / "run.json").exists()
+
+
+def test_finalize_includes_metadata_in_aggregate_run_limit(tmp_path):
+    artifacts_root = tmp_path / "artifacts"
+    workspace = RunWorkspace.create(
+        tmp_path / "temp",
+        artifacts_root,
+        limits=WorkspaceLimits(max_record_bytes=1000, max_run_bytes=600),
+    )
+    workspace.record_prompt("p" * 300)
+
+    with pytest.raises(WorkspaceLimitError, match="run metadata run limit"):
+        workspace.finalize("failed", 0.5, ["x" * 250])
+
+    assert workspace.root.exists()
+    assert not (workspace.evidence_dir / "run.json").exists()
+    assert not artifacts_root.exists()
+
+    retained = workspace.finalize("failed", 0.5, [])
+    assert (retained / "evidence" / "run.json").exists()
+
+
 def test_finalize_copy_failure_preserves_workspace_and_cleans_staging(
     tmp_path,
     monkeypatch,
 ):
     artifacts_root = tmp_path / "artifacts"
-    workspace = RunWorkspace.create(tmp_path / "temp", artifacts_root)
+    workspace = RunWorkspace.create(
+        tmp_path / "temp",
+        artifacts_root,
+        limits=WorkspaceLimits(max_record_bytes=300, max_run_bytes=350),
+    )
     workspace.record_code("print('retry')")
     original_copytree = shutil.copytree
     copy_calls = 0

@@ -16,6 +16,7 @@ import pandas as pd
 
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_OUTPUT_STEM_CHARS = 100
 SAFE_STEM = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
@@ -138,8 +139,11 @@ class RunWorkspace:
         return path
 
     def record_output(self, step_name: str, output: str) -> Path:
-        if SAFE_STEM.fullmatch(step_name) is None:
-            raise ValueError("Output step name must be a safe filename stem.")
+        if len(step_name) > MAX_OUTPUT_STEM_CHARS or SAFE_STEM.fullmatch(step_name) is None:
+            raise ValueError(
+                "Output step name must be a safe filename stem of at most "
+                f"{MAX_OUTPUT_STEM_CHARS} ASCII characters."
+            )
         path = self.output_dir / f"{step_name}.txt"
         if path.exists():
             raise ValueError(f"Output for {step_name!r} already exists.")
@@ -203,10 +207,9 @@ class RunWorkspace:
             "dataset_manifest": self._datasets,
             "finished_at": datetime.now(UTC).isoformat(),
         }
-        (self.evidence_dir / "run.json").write_text(
-            json.dumps(run, indent=2),
-            encoding="utf-8",
-        )
+        run_payload = json.dumps(run, indent=2).encode()
+        self._check_size("run metadata", run_payload)
+        (self.evidence_dir / "run.json").write_bytes(run_payload)
         retained = self.artifacts_root / self.run_id
         self.artifacts_root.mkdir(parents=True, exist_ok=True)
         if retained.exists():
