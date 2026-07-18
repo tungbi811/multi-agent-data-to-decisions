@@ -192,7 +192,13 @@ with content_column:
     if st.sidebar.button("🔄 Restart", use_container_width=True, key="restart"):
         if reset_state():
             st.rerun()
+        st.session_state.terminated = True
+        st.session_state.awaiting_response = False
+        st.session_state.user_input = ""
+        st.session_state.event = None
+        st.session_state.last_agent_name = None
         st.error("Unable to restart because runtime cleanup is incomplete.")
+        st.stop()
 
     display_group_chat()
     if not st.session_state.terminated and not st.session_state.awaiting_response:

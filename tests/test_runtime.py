@@ -359,3 +359,32 @@ def test_close_retries_pending_finalization_instead_of_discarding_evidence(tmp_p
     run = json.loads(retained.joinpath("evidence", "run.json").read_text())
     assert run["status"] == "completed"
     assert runner.stopped == 1
+
+
+def test_finalization_retry_reuses_first_terminal_elapsed_time(tmp_path, monkeypatch):
+    workspace = make_workspace(tmp_path)
+    runner = FakeRunner()
+    monotonic_values = iter((10.0, 15.0, 100.0))
+    monkeypatch.setattr("multi_agents.runtime.time.monotonic", lambda: next(monotonic_values))
+    runtime = AnalysisRuntime(workspace, runner, SimpleNamespace())
+    original_finalize = workspace.finalize
+    finalize_calls = []
+
+    def fail_once(status, elapsed, failures):
+        finalize_calls.append((status, elapsed))
+        if len(finalize_calls) == 1:
+            raise OSError("temporary finalize failure")
+        return original_finalize(status, elapsed, failures)
+
+    monkeypatch.setattr(workspace, "finalize", fail_once)
+
+    with pytest.raises(OSError, match="temporary finalize failure"):
+        runtime.finish("completed")
+    runtime.finish("failed")
+
+    assert finalize_calls == [("completed", 5.0), ("completed", 5.0)]
+    assert runner.stopped == 1
+    retained = workspace.artifacts_root / workspace.run_id
+    run = json.loads(retained.joinpath("evidence", "run.json").read_text())
+    assert run["status"] == "completed"
+    assert run["runtime_seconds"] == 5.0

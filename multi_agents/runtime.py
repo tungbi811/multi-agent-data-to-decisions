@@ -33,6 +33,7 @@ class AnalysisRuntime:
         self._runner_stop_attempted = False
         self._workspace_cleaned = False
         self._pending_status: str | None = None
+        self._pending_elapsed: float | None = None
         self._run_started = False
         self._recommendation_recorded = False
 
@@ -101,10 +102,10 @@ class AnalysisRuntime:
             return
         if self._pending_status is None:
             self._pending_status = status
+            self._pending_elapsed = time.monotonic() - self.started_at
         self._stop_runner()
-        elapsed = time.monotonic() - self.started_at
         try:
-            self.workspace.finalize(self._pending_status, elapsed, self.failures)
+            self.workspace.finalize(self._pending_status, self._pending_elapsed, self.failures)
         except Exception as exc:
             self.record_failure(f"Workspace finalization failed: {exc}")
             raise

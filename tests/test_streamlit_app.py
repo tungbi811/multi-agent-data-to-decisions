@@ -47,6 +47,13 @@ class FinishFailRuntime(FakeRuntime):
         raise OSError("finalize failed with api_key=must-not-leak")
 
 
+class RetryCleanupRuntime(FakeRuntime):
+    def close(self):
+        self.closed += 1
+        if self.closed == 1:
+            raise OSError("temporary cleanup failure")
+
+
 class FailingRunRuntime(FakeRuntime):
     def run(self, requirement):
         raise RuntimeError("event iterator unavailable")
@@ -460,6 +467,36 @@ def test_reset_preserves_runtime_reference_when_cleanup_fails():
     assert runtime.closed == 1
     assert app.session_state.runtime is runtime
     assert all("must-not-leak" not in error.value for error in app.error)
+
+
+def test_failed_restart_quarantines_queued_event_until_cleanup_retry_succeeds():
+    app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
+    runtime = RetryCleanupRuntime()
+    queued_completion = SimpleNamespace(type="run_completion", content="must not run")
+    app.session_state.runtime = runtime
+    app.session_state.events = iter((queued_completion,))
+    app.session_state.event = object()
+    app.session_state.awaiting_response = True
+    app.session_state.user_input = "stale response"
+    app.session_state.last_agent_name = "Coder"
+
+    app.button(key="restart").click().run(timeout=10)
+
+    assert not app.exception
+    assert app.session_state.runtime is runtime
+    assert runtime.events == []
+    assert runtime.finished == []
+    assert app.session_state.terminated is True
+    assert app.session_state.awaiting_response is False
+    assert app.session_state.user_input == ""
+
+    app.button(key="restart").click().run(timeout=10)
+
+    assert not app.exception
+    assert runtime.closed == 2
+    assert runtime.events == []
+    assert runtime.finished == []
+    assert app.session_state.runtime is None
 
 
 def test_completion_preserves_runtime_reference_when_finalization_fails():
