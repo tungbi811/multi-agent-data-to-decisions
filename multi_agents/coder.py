@@ -42,7 +42,6 @@ def run_code(
 class Coder(AssistantAgent):
     def __init__(self):
         llm_config = LLMConfig(
-            api_type="openai",
             model="gpt-4.1-mini",
             temperature=0,
             stream=False,

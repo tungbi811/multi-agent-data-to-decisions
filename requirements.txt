@@ -1,5 +1,0 @@
-autogen==0.9.9
-matplotlib==3.10.6
-pandas==2.3.2
-scikit_learn==1.7.1
-seaborn==0.13.2
