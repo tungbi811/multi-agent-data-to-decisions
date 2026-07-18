@@ -6,7 +6,10 @@ _EXPORTS = {
     "BusinessTranslator": (".business_translator", "BusinessTranslator"),
     "Coder": (".coder", "Coder"),
     "DataScientist": (".data_scientist", "DataScientist"),
+    "DatasetRegistry": (".business_analyst", "DatasetRegistry"),
     "GroupChat": (".group_chat", "GroupChat"),
+    "build_llm_config": (".config", "build_llm_config"),
+    "get_model_name": (".config", "get_model_name"),
 }
 
 __all__ = [
@@ -14,7 +17,10 @@ __all__ = [
     "BusinessTranslator",
     "Coder",
     "DataScientist",
+    "DatasetRegistry",
     "GroupChat",
+    "build_llm_config",
+    "get_model_name",
 ]
 
 

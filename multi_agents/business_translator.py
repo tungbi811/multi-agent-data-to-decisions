@@ -1,6 +1,7 @@
 from autogen import ConversableAgent, LLMConfig, UpdateSystemMessage
-from autogen.agentchat.group import AgentNameTarget, ContextVariables, RevertToUserTarget,ReplyResult
+from autogen.agentchat.group import AgentNameTarget, ContextVariables, ReplyResult
 from pydantic import BaseModel, Field
+
 
 class BusinessTranslationStep(BaseModel):
     instruction: str = Field(
@@ -9,8 +10,9 @@ class BusinessTranslationStep(BaseModel):
         example=[
             "Calculate the average customer lifetime value for each customer segment.",
             "Identify the top 5 factors contributing to customer churn.",
-        ]
+        ],
     )
+
 
 def execute_business_translation_step(
     step: BusinessTranslationStep,
@@ -30,16 +32,9 @@ def execute_business_translation_step(
         context_variables=context_variables,
     )
 
-class BusinessTranslator(ConversableAgent):
-    def __init__(self):
-        llm_config = LLMConfig(
-            api_type="openai",
-            model="gpt-4.1-mini",
-            temperature=0.3,
-            stream=False,
-            parallel_tool_calls=False
-        )
 
+class BusinessTranslator(ConversableAgent):
+    def __init__(self, llm_config: LLMConfig):
         super().__init__(
             name="BusinessTranslator",
             llm_config=llm_config,
@@ -78,5 +73,5 @@ class BusinessTranslator(ConversableAgent):
                     - Always ensure traceability from research question → analytical finding → business recommendation.
                 """
             ),
-            functions = [execute_business_translation_step]
+            functions=[execute_business_translation_step],
         )

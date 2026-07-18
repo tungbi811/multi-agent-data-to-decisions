@@ -1,10 +1,47 @@
-import os
-from autogen import LLMConfig, AssistantAgent
-from pydantic import BaseModel, Field
-from autogen.agentchat.group import ReplyResult, AgentNameTarget, RevertToUserTarget, ContextVariables
-from typing import Annotated, Literal, List
+from pathlib import Path
+from typing import Annotated, List, Literal
+
 import pandas as pd
-from utils.utils import convert_message_to_markdown
+from autogen import AssistantAgent, LLMConfig
+from autogen.agentchat.group import (
+    AgentNameTarget,
+    ContextVariables,
+    ReplyResult,
+    RevertToUserTarget,
+)
+from pydantic import BaseModel, Field
+
+
+class DatasetRegistry:
+    def __init__(self, workspace_root: Path, allowed_relative_paths: tuple[str, ...]) -> None:
+        self.workspace_root = workspace_root.resolve()
+        self.allowed = {
+            (self.workspace_root / relative).resolve() for relative in allowed_relative_paths
+        }
+
+    def resolve(self, data_path: str) -> Path:
+        candidate = (self.workspace_root / data_path).resolve()
+        if candidate not in self.allowed:
+            raise ValueError(f"{data_path!r} is not an uploaded dataset")
+        return candidate
+
+    def get_data_info(
+        self,
+        data_path: Annotated[str, "Uploaded dataset path relative to /workspace"],
+    ) -> ReplyResult:
+        path = self.resolve(data_path)
+        frame = pd.read_csv(path)
+        dataset_name = path.stem.replace("_", " ").title()
+        message = (
+            f"### {dataset_name}\n\n"
+            f"First five rows:\n\n```text\n{frame.head(5).to_string(index=False)}\n```\n\n"
+            f"Numerical columns: {frame.select_dtypes(include=['number']).columns.tolist()}\n\n"
+            f"Categorical columns: "
+            f"{frame.select_dtypes(include=['object', 'category']).columns.tolist()}\n\n"
+            f"Shape: {frame.shape[0]} rows × {frame.shape[1]} columns"
+        )
+        return ReplyResult(message=message, target=AgentNameTarget("BusinessAnalyst"))
+
 
 class BizAnalystOutput(BaseModel):
     objective: str = Field(
@@ -18,7 +55,7 @@ class BizAnalystOutput(BaseModel):
             "The goal of this project is to implement a predictive model to "
             "forecast customer churn, enabling proactive retention strategies "
             "and reducing revenue loss."
-        )
+        ),
     )
     stakeholders_expectations: str = Field(
         ...,
@@ -30,7 +67,7 @@ class BizAnalystOutput(BaseModel):
             "The marketing team will use the predictions to design retention campaigns. "
             "Customer success managers will use them to prioritize outreach. "
             "Customers may experience more relevant engagement, improving satisfaction."
-        )
+        ),
     )
     research_questions: List[str] = Field(
         ...,
@@ -38,14 +75,22 @@ class BizAnalystOutput(BaseModel):
         example=[
             "What demographic or behavioral characteristics most strongly correlate with churn?",
             "What role do service-related factors (delivery delays, complaints) play in customer attrition?",
-            "How does customer engagement correlate with retention rates?"
-        ]
+            "How does customer engagement correlate with retention rates?",
+        ],
     )
-    problem_type: Literal["classification", "regression", "clustering", "time_series", "anomaly_detection", "recommendation"] = Field(
+    problem_type: Literal[
+        "classification",
+        "regression",
+        "clustering",
+        "time_series",
+        "anomaly_detection",
+        "recommendation",
+    ] = Field(
         ...,
         description="The type of machine learning problem that best fits the business use case.",
-        example="classification"
+        example="classification",
     )
+
 
 def request_clarification(
     clarification_question: Annotated[str, "One targeted question to clarify user requirements"],
@@ -58,46 +103,29 @@ def request_clarification(
         target=RevertToUserTarget(),
     )
 
-def get_data_info(
-    data_path: Annotated[str, "Dataset path"],
-) -> ReplyResult:
-    dataset_name = os.path.splitext(os.path.basename(data_path))[0].replace('_', ' ').title()
-    df = pd.read_csv(data_path)
-    markdown_response = convert_message_to_markdown(f"Take a look at the first few rows of the {dataset_name} dataset:\n {df.head(5)} \n Numerical columns: {df.select_dtypes(include=['number']).columns.tolist()} \n Categorical columns: {df.select_dtypes(include=['object', 'category']).columns.tolist()} \n Total rows: {df.shape[0]}, Total columns: {df.shape[1]}")
-    return ReplyResult(
-        message=markdown_response,
-        target=AgentNameTarget("BusinessAnalyst")
-    )
 
 def complete_business_analyst(
-    output: BizAnalystOutput,
-    context_variables: ContextVariables
+    output: BizAnalystOutput, context_variables: ContextVariables
 ) -> ReplyResult:
     context_variables["objective"] = output.objective
     context_variables["research_questions"] = output.research_questions
     context_variables["problem_type"] = output.problem_type
     context_variables["stakeholders_expectations"] = output.stakeholders_expectations
-    markdown_response = convert_message_to_markdown(f"""The business analysis is complete with the following details:
+    markdown_response = f"""The business analysis is complete with the following details:
             - Objective: {output.objective}
             - Stakeholder Expectations: {output.stakeholders_expectations}
-            - Research Questions: {', '.join(output.research_questions)}
+            - Research Questions: {", ".join(output.research_questions)}
             - Problem Type: {output.problem_type}
-            """)
+            """
     return ReplyResult(
         message=markdown_response,
         target=AgentNameTarget("BusinessTranslator"),
         context_variables=context_variables,
     )
 
+
 class BusinessAnalyst(AssistantAgent):
-    def __init__(self):
-        llm_config = LLMConfig(
-            api_type= "openai",
-            model="gpt-4.1-mini",
-            temperature=0.5,
-            stream=False,
-            parallel_tool_calls=False,
-        )
+    def __init__(self, registry: DatasetRegistry, llm_config: LLMConfig):
         super().__init__(
             name="BusinessAnalyst",
             llm_config=llm_config,
@@ -109,19 +137,19 @@ class BusinessAnalyst(AssistantAgent):
                 Key Responsibilities:
                 - Define objectives: List clear, measurable business goals that align with the use case.
                 - Formulate research questions: Define the analytical questions that need to be answered to achieve the objectives.
-                - Complete business analysis: When you have a clear understanding of the business context, objectives, and research questions, you must call complete_business_analyst to hand off to the DataExplorer.
+                - Complete business analysis: When you have a clear understanding of the business context, objectives, and research questions, you must call complete_business_analyst to hand off to the BusinessTranslator.
                 - Request clarification: If user requirements are ambiguous, incomplete, or conflicting, you must call request_clarification to ask for more details or suggestions and ask for user's choice.
 
                 Workflow:
                 1. Review initial user requirements.
                 2. call get_data_info first to discover what datasets, variables, and metadata are available for the project.
                 3. If requirements are vague, incomplete, or conflicting, call request_clarification to ask for more details or suggestions and ask for user's choice.
-                4. When complete, you must call complete_business_analysis_task to hand off to the DataExplorer.
+                4. When complete, you must call complete_business_analyst to hand off to the BusinessTranslator.
 
                 Rules:
                 - Do not propose data cleaning, feature engineering, or modeling directly.
                 - Keep analysis high-level, business-focused, and actionable.
                 - Don't call get_data_info after the same dataset twice.
             """,
-            functions = [get_data_info, request_clarification, complete_business_analyst]
+            functions=[registry.get_data_info, request_clarification, complete_business_analyst],
         )
