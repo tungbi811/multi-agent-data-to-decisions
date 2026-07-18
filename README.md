@@ -1,147 +1,106 @@
-# 🧠 Multi-Agent System for Automated Data Science Workflows
+# Auto DS Agents
 
-A modular **multi-agent system (MAS)** that autonomously executes the entire data science workflow — from business problem understanding to model execution and actionable recommendation generation.  
-Built using **AG2** and **GPT-4o-mini**, the system coordinates multiple specialized agents that collaborate asynchronously to transform business questions into data-driven insights.
+Auto DS Agents is a local capstone prototype for structured/tabular CSV data.
+Four specialised AG2 agents collaborate to turn a business requirement and one
+or more uploaded datasets into analysis, executable Python, and a
+stakeholder-facing recommendation.
 
----
+The agents are:
 
-## 🚀 Overview
+- **Business Analyst** — interprets the business requirement and structures the
+  objective.
+- **Data Scientist** — plans the analysis and selects suitable techniques.
+- **Coder** — generates complete Python scripts and executes them in Docker.
+- **Business Translator** — converts analytical results into an actionable,
+  non-technical recommendation.
 
-Modern data science workflows involve complex, multi-stage tasks — from data preparation to modeling and interpretation.  
-This project implements a **multi-agent architecture** where each agent specializes in a specific stage, enabling modularity, explainability, and automation.
+The default agent model is `gpt-4.1-mini`. Set `AUTO_DS_MODEL` before launching
+the application to override that default.
 
-### 🔹 Agents
-| Agent | Role | Model | Temperature |
-|--------|------|--------|--------------|
-| **Business Analyst** | Interprets business requirements and structures objectives | GPT-4o-mini | 0.5 |
-| **Business Translator** | Converts analytical results into actionable business recommendations | GPT-4o-mini | 0.3 |
-| **Data Scientist** | Designs the analytical plan and selects ML techniques | GPT-4o-mini | 0.3 |
-| **Coder** | Generates and executes Python code for data analysis and modeling | GPT-4o-mini | 0.0 |
+## Scope
 
----
+The prototype accepts structured/tabular CSV input through its Streamlit
+interface. It is not a production AutoML platform and does not support
+unstructured data, real-time streaming, enterprise deployment, or proprietary
+system integrations.
 
-## 🏗️ Project Architecture
+## Prerequisites
 
-```
-AUTO-DS-AGENTS/
-├── artifacts/                   # Generated models, reports, and visualizations
-├── configs/                     # Configuration files (e.g., environment, prompts)
-├── data/                        # Input datasets (CSV or structured files)
-├── logs/                        # Agent conversation and execution logs
-├── multi_agents/                # Core multi-agent system
-│   ├── __init__.py
-│   ├── business_analyst.py      # Interprets business problems and objectives
-│   ├── business_translator.py   # Converts results into actionable recommendations
-│   ├── coder.py                 # Generates and executes Python code
-│   ├── data_scientist.py        # Designs analytical strategy and methods
-│   └── group_chat.py            # Coordinates communication among agents
-├── utils/                       # Helper modules and shared utilities
-│   ├── sidebar.py               # (Optional) Streamlit/CLI integration support
-│   └── utils.py                 # Common helper functions
-├── main.py                      # Main entry point for executing a workflow
-├── requirements.txt             # Python dependencies
-├── LICENSE                      # MIT License
-├── .gitignore                   # Ignored files and folders
-└── README.md                    # Project documentation
-```
+- Python 3.12 or 3.13
+- [uv](https://docs.astral.sh/uv/)
+- Docker with a running local daemon
+- An OpenAI API key for a manual analysis run
 
----
+## Setup
 
-## ⚙️ Installation
-
-### Prerequisites
-- **Conda** (Anaconda or Miniconda)
-- **Python 3.11+**
-- **OpenAI API key**
-- Basic Python data-science libraries: `pandas`, `numpy`, `scikit-learn`, `matplotlib`
-
-### Setup Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/tungbi811/Multi-Agent-Collaboration-for-Automated-Data-Science-Workflows.git
-   cd Multi-Agent-Collaboration-for-Automated-Data-Science-Workflows
-   ```
-
-2. **Create and activate Conda environment**
-   ```bash
-   conda create -n auto_ds_agents python=3.11 -y
-   conda activate auto_ds_agents
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure environment variables**
-
-#### macOS / Linux
-```bash
-export OPENAI_API_KEY=your_api_key_here
-```
-
-#### Windows (PowerShell)
-```powershell
-setx OPENAI_API_KEY "your_api_key_here"
-```
-
----
-
-## 🎯 Usage
-
-To launch the interactive interface, run:
+Install the locked application and development dependencies:
 
 ```bash
-streamlit run main.py
+uv sync --locked --python 3.12
 ```
 
-This opens the web interface at **http://localhost:8501**, where you can upload datasets and provide analytical queries.
+Build the locked, network-isolated code-executor image:
 
-### Example Input (User Agent)
-
-> **Question:** How can we accurately estimate the market value of a house given its features?
->
-> **Dataset:** `house_prices.csv`
-
-The agents then collaborate as follows:
-1. **Business Analyst** extracts objectives and defines the ML problem type (regression).
-2. **Business Translator** formulates clear analytical tasks for the Data Scientist.
-3. **Data Scientist** designs the modeling strategy.
-4. **Coder** executes the code via `JupyterCodeExecutor` and returns results.
-5. **Business Translator** produces the final business recommendations in Markdown.
-
----
-
-## 🔬 Example Output
-
-```
-## Business Recommendations
-- **Insight:** Location and overall quality have the strongest influence on house prices.
-- **Recommendation:** Focus on improving property quality in mid-range neighborhoods to maximize value.
-- **Next Step:** Consider developing price prediction dashboards for real-time valuation updates.
+```bash
+docker build -f docker/executor.Dockerfile -t auto-ds-executor:0.1 .
 ```
 
----
+Launch the local interface:
 
-## 🛡️ Safety & Design Principles
+```bash
+uv run streamlit run main.py
+```
 
-- Agents communicate asynchronously using AG2 message routing.
-- `JupyterCodeExecutor` ensures code runs safely in a sandboxed backend environment.
-- Each agent follows structured input/output schemas (Pydantic models) for consistency.
-- The system maintains full execution logs for transparency and traceability.
+Enter the OpenAI API key only in the local Streamlit password field. Do not add
+it to source, logs, artifacts, screenshots, commits, Docker images, uploaded
+data, or generated-code containers.
 
----
+## Verification
 
-## 🔮 Future Enhancements
+Run the offline test suite:
 
-- [ ] Add benchmarking and performance metrics for generated models
-- [ ] Expand to multi-query workflows
-- [ ] Integrate data visualization dashboards
-- [ ] Support for multi-model agents (e.g., Claude, Gemini)
+```bash
+uv run pytest -m "not docker"
+```
 
----
+Run the opt-in Docker isolation tests after building the executor image:
 
-**Developed by:** Monika Shakya, Van Thang Doan, Yamuna G C, Linh Chi Tong, Szu-Yu Lin, Duy Tung Nguyen  
-**License:** MIT  
-**Built with ❤️ for data science automation and intelligent workflows**
+```bash
+RUN_DOCKER_TESTS=1 uv run pytest tests/test_docker_smoke.py
+```
+
+Automated tests do not make live OpenAI calls.
+
+## Runtime safety and evidence
+
+Generated Python runs in a restricted Docker container with no outbound
+network, no API key, a read-only container root filesystem, and access only to
+the current run workspace. Docker reduces exposure to the host, but it does not
+make this prototype production-ready. Treat uploads, generated code, and
+results as untrusted. Use only public, non-sensitive sample data, and stop if a
+generated script attempts an unexpected file, network, or destructive
+operation.
+
+At completion, generated code, outputs, trace, runtime, and failure evidence
+are retained under `artifacts/runs/<run-id>`. Uploaded CSV copies and the
+temporary run workspace are removed. Use
+[`docs/evaluation-template.md`](docs/evaluation-template.md) to record a manual
+rerun without turning proposed targets into claimed results.
+
+## Illustrative example
+
+A house-price request might ask how to estimate market value from property
+features. An illustrative recommendation could be to prioritise property
+quality improvements in selected neighbourhoods. This is an example of the
+expected output style, not a measured benchmark or a recorded project result.
+
+## Contributors
+
+- Monika Shakya
+- Van Thang Doan
+- Yamuna G C
+- Linh Chi Tong
+- Szu-Yu Lin
+- Duy Tung Nguyen — System Developer
+
+**License:** MIT
