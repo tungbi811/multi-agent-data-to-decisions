@@ -1,15 +1,6 @@
-from pathlib import Path
-from autogen.coding.jupyter import LocalJupyterServer, JupyterCodeExecutor
+from html import escape
+
 import streamlit as st
-from autogen import OpenAIWrapper
-
-output_dir = Path("./artifacts")
-output_dir.mkdir(parents=True, exist_ok=True)
-
-server = LocalJupyterServer(
-    log_file='./logs/jupyter_gateway.log',
-)
-executor = JupyterCodeExecutor(server, output_dir=output_dir, timeout=1200)
 
 ROLE_EMOJI = {
     "User": "🧑‍💻",
@@ -24,39 +15,10 @@ ROLE_EMOJI = {
     "CodeExecutor": "💻",
 }
 
-config_list = [
-    {
-        "model": "gpt-4.1-nano",
-        "api_type": "openai",
-    }
-]
-client = OpenAIWrapper(config_list=config_list)
 
-def convert_message_to_markdown(message):
-    messages = [
-        {"role": "user", "content": f"Convert the whole message to markdown format (do not summarise or remove anything):\n{message}"}
-    ]
-    response = client.create(messages=messages)
-    text = client.extract_text_or_completion_object(response)[0]
-    if "```markdown" in text:
-        try:
-            return text.split("```markdown")[1].split("```")[0].strip()
-        except IndexError:
-            pass
-    return text.strip()
+def safe_md(text: str) -> str:
+    return escape(text, quote=False)
 
-
-def safe_md(text):
-    return (
-        text.replace("(", "\\(")
-            .replace(")", "\\)")
-            .replace("_", "\\_")
-            .replace("+", "&#43;")
-            .replace("~", "\\~")
-            .replace("$", "\\$")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-    )
 
 def display_group_chat():
     expander_buffer = []  # temporary buffer for consecutive expander messages
@@ -81,7 +43,11 @@ def display_group_chat():
                                 st.code(econtent)
                             else:
                                 if "```markdown" in econtent:
-                                    st.write(safe_md(econtent.split("```markdown")[1].split("```")[0].strip()))
+                                    st.write(
+                                        safe_md(
+                                            econtent.split("```markdown")[1].split("```")[0].strip()
+                                        )
+                                    )
                                 else:
                                     st.write(safe_md(econtent))
                 expander_buffer = []  # reset buffer
@@ -105,6 +71,8 @@ def display_group_chat():
                         st.code(econtent)
                     else:
                         if "```markdown" in econtent:
-                            st.write(safe_md(econtent.split("```markdown")[1].split("```")[0].strip()))
+                            st.write(
+                                safe_md(econtent.split("```markdown")[1].split("```")[0].strip())
+                            )
                         else:
                             st.write(safe_md(econtent))

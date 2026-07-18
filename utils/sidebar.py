@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 
+
 class Sidebar:
     """
     A class to create and manage the Streamlit sidebar for the application.
@@ -28,7 +29,7 @@ class Sidebar:
             type="password",
             value=os.environ.get("OPENAI_API_KEY", ""),
             label_visibility="collapsed",
-            placeholder="Enter your API key"
+            placeholder="Enter your API key",
         )
         st.markdown("[Get an API key](https://platform.openai.com/account/api-keys)")
 
@@ -39,7 +40,7 @@ class Sidebar:
             "Provider",
             ["OpenAI", "Anthropic", "Azure", "Custom"],
             index=0,
-            label_visibility="collapsed"
+            label_visibility="collapsed",
         )
 
     def _get_model_choice(self):
@@ -48,8 +49,8 @@ class Sidebar:
         self.model_choice = st.selectbox(
             "Model",
             ["gpt-4o-mini", "gpt-4.1-mini", "gpt-3.5-turbo"],
-            index=0, # Default to the newest model
-            label_visibility="collapsed"
+            index=0,  # Default to the newest model
+            label_visibility="collapsed",
         )
 
     def _get_temperature(self):
@@ -61,29 +62,15 @@ class Sidebar:
             max_value=1.0,
             value=0.3,
             step=0.1,
-            label_visibility="collapsed"
+            label_visibility="collapsed",
         )
 
     def _upload_dataset(self):
-        """Renders the file uploader and saves uploaded files."""
+        """Renders the file uploader and keeps uploads in UI memory."""
         st.subheader("📂 Dataset")
-        uploaded_files = st.file_uploader(
-            "Upload CSV",
-            type=["csv"],
-            accept_multiple_files=True,
-            label_visibility="collapsed"
+        self.uploaded_files = st.file_uploader(
+            "Upload CSV", type=["csv"], accept_multiple_files=True, label_visibility="collapsed"
         )
-        self.dataset_paths = []
-        if uploaded_files:
-            # Ensure the target directory exists
-            save_dir = "./data/uploads"
-            os.makedirs(save_dir, exist_ok=True)
-
-            for file in uploaded_files:
-                save_path = os.path.join(save_dir, file.name)
-                with open(save_path, "wb") as f:
-                    f.write(file.getbuffer())
-                self.dataset_paths.append(save_path)
 
     def _get_user_requirements(self):
         """Renders the user requirements input widget."""
@@ -91,8 +78,6 @@ class Sidebar:
         self.user_requirements = st.text_area(
             "Describe your data analysis requirements here...",
             height=150,
-            placeholder="E.g., Analyze sales trends, predict customer churn, etc."
+            placeholder="E.g., Analyze sales trends, predict customer churn, etc.",
             # value="Can you segment properties into clusters (luxury homes, affordable starter homes, investment-ready properties, etc.)"
         )
-
-    
