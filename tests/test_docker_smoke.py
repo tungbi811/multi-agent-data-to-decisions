@@ -7,8 +7,8 @@ import pytest
 from autogen.agentchat.group import ContextVariables
 from autogen.coding import DockerCommandLineCodeExecutor
 
-from multi_agents.execution import CodeRunner, create_docker_executor
-from multi_agents.workspace import RunWorkspace
+from agents.execution import CodeRunner, create_docker_executor
+from agents.workspace import RunWorkspace
 
 
 EXECUTED_CODE = """\

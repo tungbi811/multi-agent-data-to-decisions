@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from multi_agents.runtime import AnalysisRuntime
-from multi_agents.workspace import RunWorkspace, WorkspaceLimitError, WorkspaceLimits
+from agents.runtime import AnalysisRuntime
+from agents.workspace import RunWorkspace, WorkspaceLimitError, WorkspaceLimits
 
 
 class FakeRunner:
@@ -39,7 +39,7 @@ def test_start_cleans_workspace_when_executor_creation_fails(tmp_path, monkeypat
     workspace = make_workspace(tmp_path)
     private_root = workspace.code_dir.parent
     monkeypatch.setattr(
-        "multi_agents.runtime.create_docker_executor",
+        "agents.runtime.create_docker_executor",
         lambda workspace: (_ for _ in ()).throw(RuntimeError("docker unavailable")),
     )
 
@@ -53,9 +53,9 @@ def test_start_cleans_workspace_when_executor_creation_fails(tmp_path, monkeypat
 def test_start_stops_executor_when_code_runner_creation_fails(tmp_path, monkeypatch):
     workspace = make_workspace(tmp_path)
     executor = FakeExecutor()
-    monkeypatch.setattr("multi_agents.runtime.create_docker_executor", lambda workspace: executor)
+    monkeypatch.setattr("agents.runtime.create_docker_executor", lambda workspace: executor)
     monkeypatch.setattr(
-        "multi_agents.runtime.CodeRunner",
+        "agents.runtime.CodeRunner",
         lambda workspace, executor: (_ for _ in ()).throw(RuntimeError("bad runner")),
     )
 
@@ -69,10 +69,10 @@ def test_start_stops_executor_when_code_runner_creation_fails(tmp_path, monkeypa
 def test_start_cleans_executor_and_workspace_when_group_chat_fails(tmp_path, monkeypatch):
     workspace = make_workspace(tmp_path)
     runner = FakeRunner()
-    monkeypatch.setattr("multi_agents.runtime.create_docker_executor", lambda workspace: object())
-    monkeypatch.setattr("multi_agents.runtime.CodeRunner", lambda workspace, executor: runner)
+    monkeypatch.setattr("agents.runtime.create_docker_executor", lambda workspace: object())
+    monkeypatch.setattr("agents.runtime.CodeRunner", lambda workspace, executor: runner)
     monkeypatch.setattr(
-        "multi_agents.runtime.GroupChat",
+        "agents.runtime.GroupChat",
         lambda api_key, workspace, code_runner: (_ for _ in ()).throw(RuntimeError("bad config")),
     )
 
@@ -86,10 +86,10 @@ def test_start_cleans_executor_and_workspace_when_group_chat_fails(tmp_path, mon
 def test_start_preserves_original_error_when_cleanup_fails(tmp_path, monkeypatch):
     workspace = make_workspace(tmp_path)
     runner = FakeRunner(RuntimeError("stop failed"))
-    monkeypatch.setattr("multi_agents.runtime.create_docker_executor", lambda workspace: object())
-    monkeypatch.setattr("multi_agents.runtime.CodeRunner", lambda workspace, executor: runner)
+    monkeypatch.setattr("agents.runtime.create_docker_executor", lambda workspace: object())
+    monkeypatch.setattr("agents.runtime.CodeRunner", lambda workspace, executor: runner)
     monkeypatch.setattr(
-        "multi_agents.runtime.GroupChat",
+        "agents.runtime.GroupChat",
         lambda api_key, workspace, code_runner: (_ for _ in ()).throw(RuntimeError("bad config")),
     )
 
@@ -103,10 +103,10 @@ def test_start_preserves_original_error_when_cleanup_fails(tmp_path, monkeypatch
 def test_start_preserves_original_error_when_workspace_cleanup_fails(tmp_path, monkeypatch):
     workspace = make_workspace(tmp_path)
     runner = FakeRunner()
-    monkeypatch.setattr("multi_agents.runtime.create_docker_executor", lambda workspace: object())
-    monkeypatch.setattr("multi_agents.runtime.CodeRunner", lambda workspace, executor: runner)
+    monkeypatch.setattr("agents.runtime.create_docker_executor", lambda workspace: object())
+    monkeypatch.setattr("agents.runtime.CodeRunner", lambda workspace, executor: runner)
     monkeypatch.setattr(
-        "multi_agents.runtime.GroupChat",
+        "agents.runtime.GroupChat",
         lambda api_key, workspace, code_runner: (_ for _ in ()).throw(RuntimeError("bad config")),
     )
     monkeypatch.setattr(
@@ -157,10 +157,10 @@ def test_record_event_does_not_persist_runtime_api_key(tmp_path, monkeypatch):
     workspace = make_workspace(tmp_path)
     runner = FakeRunner()
     group_chat = FakeGroupChat()
-    monkeypatch.setattr("multi_agents.runtime.create_docker_executor", lambda workspace: object())
-    monkeypatch.setattr("multi_agents.runtime.CodeRunner", lambda workspace, executor: runner)
+    monkeypatch.setattr("agents.runtime.create_docker_executor", lambda workspace: object())
+    monkeypatch.setattr("agents.runtime.CodeRunner", lambda workspace, executor: runner)
     monkeypatch.setattr(
-        "multi_agents.runtime.GroupChat", lambda api_key, workspace, code_runner: group_chat
+        "agents.runtime.GroupChat", lambda api_key, workspace, code_runner: group_chat
     )
 
     runtime = AnalysisRuntime.start("dummy-local-secret", workspace)
@@ -365,7 +365,7 @@ def test_finalization_retry_reuses_first_terminal_elapsed_time(tmp_path, monkeyp
     workspace = make_workspace(tmp_path)
     runner = FakeRunner()
     monotonic_values = iter((10.0, 15.0, 100.0))
-    monkeypatch.setattr("multi_agents.runtime.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("agents.runtime.time.monotonic", lambda: next(monotonic_values))
     runtime = AnalysisRuntime(workspace, runner, SimpleNamespace())
     original_finalize = workspace.finalize
     finalize_calls = []

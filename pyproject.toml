@@ -1,5 +1,5 @@
 [project]
-name = "auto-ds-agents"
+name = "multi-agents-data-to-decisions"
 version = "0.1.0"
 description = "A multi-agent prototype for automated tabular data-science workflows."
 readme = "README.md"

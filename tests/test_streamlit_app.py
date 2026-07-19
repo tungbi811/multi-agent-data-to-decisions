@@ -159,7 +159,7 @@ def test_run_failure_closes_started_runtime_and_keeps_upload_out_of_repository(
     runtime = FailingRunRuntime()
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(
-        "multi_agents.runtime.AnalysisRuntime.start",
+        "agents.runtime.AnalysisRuntime.start",
         lambda api_key, workspace: runtime,
     )
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
@@ -180,7 +180,7 @@ def test_completed_run_can_start_and_finalize_a_second_analysis(tmp_path, monkey
     second = FakeRuntime((completion,))
     runtimes = iter((first, second))
     monkeypatch.setattr(
-        "multi_agents.runtime.AnalysisRuntime.start",
+        "agents.runtime.AnalysisRuntime.start",
         lambda api_key, workspace: next(runtimes),
     )
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
@@ -201,7 +201,7 @@ def test_new_analysis_closes_active_runtime_and_resets_run_state(tmp_path, monke
     old_runtime = FakeRuntime()
     new_runtime = FakeRuntime((completion,))
     monkeypatch.setattr(
-        "multi_agents.runtime.AnalysisRuntime.start",
+        "agents.runtime.AnalysisRuntime.start",
         lambda api_key, workspace: new_runtime,
     )
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
@@ -228,7 +228,7 @@ def test_active_runtime_cleanup_failure_aborts_new_analysis(tmp_path, monkeypatc
     old_runtime = CleanupFailRuntime()
     starts = []
     monkeypatch.setattr(
-        "multi_agents.runtime.AnalysisRuntime.start",
+        "agents.runtime.AnalysisRuntime.start",
         lambda api_key, workspace: starts.append(workspace),
     )
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
@@ -517,7 +517,7 @@ def test_completion_preserves_runtime_reference_when_finalization_fails():
 def test_workspace_creation_failure_uses_generic_bounded_error(tmp_path, monkeypatch):
     secret_error = "api_key=must-not-leak " + "x" * 20_000
     monkeypatch.setattr(
-        "multi_agents.workspace.RunWorkspace.create",
+        "agents.workspace.RunWorkspace.create",
         lambda: (_ for _ in ()).throw(RuntimeError(secret_error)),
     )
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
@@ -539,7 +539,7 @@ def test_upload_failure_is_not_masked_or_leaked_when_workspace_close_fails(tmp_p
         def close(self):
             raise OSError("cleanup password=also-must-not-leak")
 
-    monkeypatch.setattr("multi_agents.workspace.RunWorkspace.create", FailingWorkspace)
+    monkeypatch.setattr("agents.workspace.RunWorkspace.create", FailingWorkspace)
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
     configure_analysis(app, tmp_path)
 

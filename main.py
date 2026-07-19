@@ -4,8 +4,8 @@ st.set_page_config(
     page_title="🤖 From Data to Decisions: A Multi-Agent System", layout="wide"
 )
 
-from multi_agents.runtime import AnalysisRuntime  # noqa: E402
-from multi_agents.workspace import RunWorkspace  # noqa: E402
+from agents.runtime import AnalysisRuntime  # noqa: E402
+from agents.workspace import RunWorkspace  # noqa: E402
 from utils.events import (  # noqa: E402
     coder_code_from_tool_call,
     next_or_none,

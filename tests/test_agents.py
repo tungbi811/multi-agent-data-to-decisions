@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import multi_agents.business_analyst as business_analyst_module
-import multi_agents.group_chat as group_chat_module
-from multi_agents.business_analyst import BusinessAnalyst, DatasetRegistry
-from multi_agents.config import DEFAULT_MODEL, get_model_name
-from multi_agents.group_chat import MAX_ROUNDS, GroupChat
-from multi_agents.workspace import RunWorkspace
+import agents.business_analyst as business_analyst_module
+import agents.group_chat as group_chat_module
+from agents.business_analyst import BusinessAnalyst, DatasetRegistry
+from agents.config import DEFAULT_MODEL, get_model_name
+from agents.group_chat import MAX_ROUNDS, GroupChat
+from agents.workspace import RunWorkspace
 
 
 CSV = b"feature,target\n1,0\n2,1\n"

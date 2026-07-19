@@ -1,4 +1,4 @@
-from multi_agents.group_chat import GroupChat
+from agents.group_chat import GroupChat
 
 group_chat = GroupChat()
 events = group_chat.run(

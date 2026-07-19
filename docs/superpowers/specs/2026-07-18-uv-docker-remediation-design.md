@@ -10,7 +10,7 @@ identified in the repository review, and capture honest run evidence.
 
 ## Scope and constraints
 
-- Complete the current `multi-agents/` to `multi_agents/` rename without
+- Complete the current `multi-agents/` to `agents/` rename without
   reverting or modifying unrelated dataset renames or the existing log diff.
 - Support Python `>=3.12,<3.14`.
 - Use `pyproject.toml` and `uv.lock` as the only dependency sources.
@@ -28,7 +28,7 @@ identified in the repository review, and capture honest run evidence.
 
 ### Source layout
 
-The agent package will be named `multi_agents` and contain a conventional
+The agent package will be named `agents` and contain a conventional
 `__init__.py`. Imports in `main.py`, tests, and agent modules will consistently
 use that package name. The package export list will contain strings rather than
 class objects.
@@ -136,7 +136,7 @@ Automated tests will not require an OpenAI API key or make network calls.
 
 Focused tests will cover:
 
-- `multi_agents` package import and string-based `__all__` exports;
+- `agents` package import and string-based `__all__` exports;
 - PEP 621/uv project metadata and absence of conflicting dependency sources;
 - safe upload filenames, size limits, unique workspaces, and cleanup;
 - dataset allowlisting and rejection of out-of-scope paths;

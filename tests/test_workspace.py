@@ -3,7 +3,7 @@ import shutil
 
 import pytest
 
-from multi_agents.workspace import (
+from agents.workspace import (
     RunWorkspace,
     UploadValidationError,
     WorkspaceLimitError,
@@ -33,7 +33,7 @@ def test_save_upload_records_hash_and_shape(tmp_path):
 
 
 def test_save_upload_enforces_size_limit(tmp_path, monkeypatch):
-    monkeypatch.setattr("multi_agents.workspace.MAX_UPLOAD_BYTES", 3)
+    monkeypatch.setattr("agents.workspace.MAX_UPLOAD_BYTES", 3)
     workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
     with pytest.raises(UploadValidationError, match="50 MiB"):
         workspace.save_upload("large.csv", CSV)
@@ -215,7 +215,7 @@ def test_finalize_copy_failure_preserves_workspace_and_cleans_staging(
             raise OSError("injected copy failure")
         return original_copytree(source, destination)
 
-    monkeypatch.setattr("multi_agents.workspace.shutil.copytree", fail_second_copy)
+    monkeypatch.setattr("agents.workspace.shutil.copytree", fail_second_copy)
 
     with pytest.raises(OSError, match="injected copy failure"):
         workspace.finalize("completed", 1.0, [])
@@ -224,7 +224,7 @@ def test_finalize_copy_failure_preserves_workspace_and_cleans_staging(
     assert (workspace.code_dir / "step-001.py").read_text() == "print('retry')\n"
     assert list(artifacts_root.iterdir()) == []
 
-    monkeypatch.setattr("multi_agents.workspace.shutil.copytree", original_copytree)
+    monkeypatch.setattr("agents.workspace.shutil.copytree", original_copytree)
     retained = workspace.finalize("completed", 1.0, [])
     assert (retained / "code" / "step-001.py").exists()
 

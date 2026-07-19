@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from autogen.agentchat.group import ContextVariables
 from autogen.coding import DockerCommandLineCodeExecutor
 
-from multi_agents.execution import MAX_OUTPUT_CHARS, CodeRunner, create_docker_executor
-from multi_agents.workspace import RunWorkspace
+from agents.execution import MAX_OUTPUT_CHARS, CodeRunner, create_docker_executor
+from agents.workspace import RunWorkspace
 
 
 class FakeExecutor:
@@ -131,7 +131,7 @@ def test_docker_factory_applies_python_only_isolation(tmp_path, monkeypatch):
             self.execution_policies = default_policy.copy()
             self.execution_policies.update(kwargs["execution_policies"])
 
-    monkeypatch.setattr("multi_agents.execution.DockerCommandLineCodeExecutor", FakeDockerExecutor)
+    monkeypatch.setattr("agents.execution.DockerCommandLineCodeExecutor", FakeDockerExecutor)
     workspace = RunWorkspace.create(tmp_path / "temp", tmp_path / "artifacts")
     executor = create_docker_executor(workspace)
 
