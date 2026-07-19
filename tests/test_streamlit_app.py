@@ -101,7 +101,7 @@ def test_app_starts_without_api_key_or_docker(monkeypatch):
     app = AppTest.from_file(str(ROOT / "main.py")).run(timeout=10)
 
     assert not app.exception
-    assert app.title[0].value == "🤖 Multi-Agent for Data Science"
+    assert app.title[0].value == "🤖 From Data to Decisions: A Multi-Agent System"
 
 
 def test_sidebar_never_prefills_key_from_process_environment(monkeypatch):

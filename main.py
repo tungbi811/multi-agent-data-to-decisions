@@ -1,6 +1,8 @@
 import streamlit as st
 
-st.set_page_config(page_title="🤖 Multi-Agent for Data Science", layout="wide")
+st.set_page_config(
+    page_title="🤖 From Data to Decisions: A Multi-Agent System", layout="wide"
+)
 
 from multi_agents.runtime import AnalysisRuntime  # noqa: E402
 from multi_agents.workspace import RunWorkspace  # noqa: E402
@@ -145,7 +147,7 @@ sidebar = Sidebar()
 
 _, content_column, _ = st.columns([0.05, 0.9, 0.05])
 with content_column:
-    st.title("🤖 Multi-Agent for Data Science")
+    st.title("🤖 From Data to Decisions: A Multi-Agent System")
     st.write(
         "👋 Upload your dataset and describe your requirements in the sidebar, "
         "then click **Run Analysis** to start."

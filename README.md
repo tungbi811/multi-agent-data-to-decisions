@@ -1,6 +1,6 @@
-# Auto DS Agents
+# From Data to Decisions: A Multi-Agent System
 
-Auto DS Agents is a local capstone prototype for structured/tabular CSV data.
+This project is a local capstone prototype for structured/tabular CSV data.
 Four specialised AG2 agents collaborate to turn a business requirement and one
 or more uploaded datasets into analysis, executable Python, and a
 stakeholder-facing recommendation.

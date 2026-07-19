@@ -17,7 +17,7 @@ class Sidebar:
             self._upload_dataset()
             self._get_user_requirements()
             st.markdown(
-                "[View source code](https://github.com/tungbi811/Multi-Agent-Collaboration-for-Automated-Data-Science-Workflows)"
+                "[View source code](https://github.com/tungbi811/multi-agent-data-to-decisions)"
             )
 
     def _get_api_key(self):
